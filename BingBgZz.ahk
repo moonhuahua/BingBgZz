@@ -1,23 +1,26 @@
-﻿/*
+/*
 ╔═════════════════════════════════
 ║【BingBgZz】每日桌面Bing壁纸 v1.4
 ║ 联系：hui0.0713@gmail.com
 ║ 讨论QQ群：3222783、271105729、493194474
 ║ by Zz @2016.12.23
 ║ 最新版本：github.com/hui-Zz/BingBgZz
+║═════════════════════════════════
+║ 增加1.每次壁纸肯定不重复和2.运行后3秒内再次运行则删除当前壁纸的功能
 ╚═════════════════════════════════
 */
 #NoEnv					;~;不检查空变量为环境变量
 FileEncoding,UTF-8		;~;下载的XML以中文编码加载
 SetBatchLines,-1		;~;脚本全速执行(默认10ms)
 SetWorkingDir,%A_ScriptDir%	;~;脚本当前工作目录
+#Include Gdip.ahk
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;~;【用户自定义变量】
-global bgDay=0			;~;下载必应今天壁纸,1为昨天,以此类推可下载历史壁纸
-global bgNum=1			;~;下载bgDay至前1天壁纸数量,最大为前8天
-global bgMax=8			;~;下载后最多只保留前8天的壁纸,设置0为不限制数量(注:bgFlag不能为1)
-global bgFlag=2			;~;壁纸文件名称形式,0为日期YYYYMMDD,1为英文名称_分辨率,2为英文名称_日期
-global bgDir:="D:\Users\Pictures\bing" ;~;壁纸图片保存路径,如bgMax不是0必须是单独文件夹,防止丢失其他图片
+global bgDay=0			;~;下载必应今天壁纸,1为昨天,以此类推可下载历史壁纸0
+global bgNum=8			;~;下载bgDay至前1天壁纸数量,最大为前8天8
+global bgMax=0			;~;下载后最多只保留前8天的壁纸,设置0为不限制数量(注:bgFlag不能为1)8
+global bgFlag=2			;~;壁纸文件名称形式,0为日期YYYYMMDD,1为英文名称_分辨率,2为英文名称_日期2
+global bgDir:=A_ScriptDir "\bing" ;~;壁纸图片保存路径,如bgMax不是0必须是单独文件夹,防止丢失其他图片
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;~;【初始化全局变量】
 ;~;默认自动根据分辨率获取,可固定为"1024x768"|"1366x768"|"1920x1080"|"1920x1200"(带上双引号)
@@ -28,9 +31,20 @@ global bgImg:=bing "/HPImageArchive.aspx?idx=" bgDay "&n=" bgNum
 global bgXML			;~;XML配置内容
 global bgImgUrl			;~;壁纸下载地址
 global bgPath			;~;壁纸保存路径
+
+global LastTime
+global Lastrool
+global LastbgPath
+
 IfNotExist, %bgDir%
 	FileCreateDir, %bgDir%
 XML_Download()
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+IfNotExist, A_ScriptDir \Timing.ini
+	FileAppend, , A_ScriptDir \Timing.ini
+IniRead, LastTime, Timing.ini, LastTime, LastTime
+IniRead, LastbgPath, Timing.ini, LastbgPath, LastbgPath
+IniRead, Lastrool, Timing.ini, Lastrool, Lastrool
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;~;【读取XML,下载图片,设置桌面背景,如已下载则随机更换壁纸】
 ;~ F1::
@@ -42,21 +56,57 @@ XML_Download()
 	{
 		RegExMatch(bgXML, "<copyright>(.*?)</copyright>", bgCR)
 		ToolTip,%bgCR1%,A_ScreenWidth,A_ScreenHeight
+		;~ Sleep 3000
 		BG_Download()
 		BG_DownFail()
 		BG_Wallpapers()
-		BG_DeleteBefore()
+		;~ BG_DeleteBefore()		;——————————
 	}else{
 		FileCopy, %bgDir%, %bgDir%
-		Random, roll, 1, %ErrorLevel%
-		Loop,%bgDir%\*.jpg
+		Loop 9
+		{
+			Random, roll, 1, %ErrorLevel%
+			if roll!=%Lastrool%
+				break
+		}
+		if (ErrorLevel=1)		;只有一张图片
+		{
+			ToolTip, 只有一张图片-显示2秒
+			Sleep 2000
+			ToolTip
+			return
+		}
+		Loop, %bgDir%\*.jpg
 		{
 			if(A_Index=roll){
 				bgPath:=A_LoopFileLongPath
+				;~ Clipboard=%bgPath%
+				;~ MsgBox, 0, , %bgPath%, 3
+				Sleep 200
 				BG_Wallpapers()
 			}
 		}
 	}
+
+if (A_TickCount-LastTime)<(3*1000)
+{
+	FileDelete, %LastbgPath%
+}
+LastTime := A_TickCount
+IniWrite, %LastTime%, Timing.ini, LastTime, LastTime
+IniWrite, %bgPath%, Timing.ini, LastbgPath, LastbgPath
+IniWrite, %roll%, Timing.ini, Lastrool, Lastrool
+
+Loop, 3
+{
+	count++
+	durTime := 4 - count
+	;~ ToolTip, %durTime%秒内再次运行删除当前壁纸！！！
+	ToolTip, %Lastrool%——%roll%————%durTime%秒内再次运行删除当前壁纸！！！		;%Lastrool%——%roll%————
+	sleep 1000
+}
+ToolTip
+
 return
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;~;【批量下载历史壁纸,搭配bgDay和bgNum使用】
@@ -97,7 +147,12 @@ XML_Download(){
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;~;【下载必应壁纸图片】
 BG_Download(){
+	SysGet, Mon, Monitor
 	URLDownloadToFile, %bgImgUrl%, %bgPath%
+	Value= %MonRight%|%MonBottom%
+	convert_resize(bgPath,"C:/Convert.jpg","k_fixed_width_height",Value,"0xde000000")
+	FileCopy, C:/Convert.jpg, %bgPath%, 1
+	FileDelete, C:/Convert.jpg
 }
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;~;【必应壁纸设置为桌面壁纸】
@@ -155,3 +210,129 @@ BG_DownFail(){
 	}
 }
 ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+RemoveWallpapers:
+BG_Wallpapers()
+MsgBox, 4, , %bgPath%&&&&%LastbgPath%, 3
+return
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;~;【更换壁纸大小的函数】
+convert_resize(source_file,out_file,function="",value=1,color="0xff000000"){
+	;source_file 源文件路径
+	;out_file 输转换图片输出路径
+	;function 功能选择，k_ratio（固定比例）  k_width（只改宽） k_height（只改高） k_fixed_width_height（宽高同时修改）
+	;value 图片宽高的数值
+	;color 放大时填充的颜色像素
+	if !pToken := Gdip_Startup()
+	{
+		MsgBox, 48, gdiplus error!, Gdiplus failed to start. Please ensure you have gdiplus on your system
+		ExitApp
+	}
+
+	if (source_file="clipboard")
+		pBitmapFile :=Gdip_CreateBitmapFromClipboard()
+	else
+		pBitmapFile :=Gdip_CreateBitmapFromFile(source_file)
+
+	Width := Gdip_GetImageWidth(pBitmapFile), Height := Gdip_GetImageHeight(pBitmapFile)
+	ratio=1
+	if (function = "k_ratio")
+	{
+		ratio:=value
+		w:=width*ratio
+		h:=height*ratio
+	}
+	if (function = "k_width")
+	{
+		ratio:=value/width
+		w:=width*ratio
+		h:=height*ratio
+	}
+	if (function = "k_height")
+	{
+		ratio:=value/height
+		w:=width*ratio
+		h:=height*ratio
+	}
+
+	if (function = "k_fixed_width_height")
+	{
+		StringSplit,out,value,|
+		wf:=out1
+		hf:=out2
+		if !wf or ! hf
+		{
+			MsgBox error in value parameter for fixed width and height
+			Gdip_Shutdown(pToken)
+			return
+		}
+
+		if (width>wf)
+		{
+			r1:=wf/width
+
+			w:=wf
+			h:=height*r1
+
+			if (h>hf)
+			{
+				r2:=hf/h
+				w:=w*r2
+				h:=hf
+			}
+		}
+		else
+		{
+			if (width<wf) and (height<hf)
+			{
+				w:=width
+				h:=height
+			}
+			else
+			{
+				r1:=hf/height
+
+				h:=hf
+				w:=width*r1
+
+				if (w>wf)
+				{
+					r2:=wf/w
+					w:=wf
+					h:=hf*r2
+				}
+			}
+		}
+	}
+
+	if (function = "k_fixed_width_height")
+		pBitmap := Gdip_CreateBitmap(wf, hf)
+	else
+		pBitmap := Gdip_CreateBitmap(w,h)
+
+	G := Gdip_GraphicsFromImage(pBitmap)
+
+	if (function = "k_fixed_width_height")
+	{
+		pbrush:=Gdip_BrushCreateSolid(color)
+		Gdip_FillRectangle(G, pBrush, 0, 0, wf, hf)
+
+		x:=Floor((wf-w)/2)
+		y:=Floor((hf-h)/2)
+	}
+	else
+	{
+		x=0
+		y=0
+	}
+
+
+
+	Gdip_DrawImage(G, pBitmapFile, x, y, w, h, 0, 0, Width, Height)
+	Gdip_SaveBitmapToFile(pBitmap, out_file)
+	if (function = "k_fixed_width_height")
+		Gdip_DeleteBrush(pBrush)
+	Gdip_DisposeImage(pBitmapFile)
+	Gdip_DisposeImage(pBitmap)
+	Gdip_DeleteGraphics(G)
+	Gdip_Shutdown(pToken)
+}
